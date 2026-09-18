@@ -12,6 +12,7 @@ type ChatInput = {
   language: string;
   history?: ChatMessage[];
   userContext?: string;
+  userId?: string;
 };
 
 type NormalizedToolCall = {
