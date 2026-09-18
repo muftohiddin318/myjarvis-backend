@@ -1,4 +1,16 @@
 {
+  "builds": [
+    {
+      "src": "api/*.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ],
   "functions": {
     "api/*.ts": {
       "maxDuration": 30
