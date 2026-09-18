@@ -1,4 +1,30 @@
-import type { ToolDefinition } from "./types.js";
+import type { ToolDefinition, ToolValidationResult } from "./types.js";
+
+const objectArgs = (args: unknown): Record<string, unknown> | null =>
+  args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : null;
+
+const validCalculatorArgs = (args: unknown): ToolValidationResult => {
+  const value = objectArgs(args)?.expression;
+  return typeof value === "string" && value.length > 0 && value.length <= 200
+    ? { ok: true, value: { expression: value } }
+    : { ok: false, error: "invalid_arguments" };
+};
+
+const validTimeArgs = (args: unknown): ToolValidationResult => {
+  const obj = objectArgs(args) ?? {};
+  return obj.timeZone === undefined || typeof obj.timeZone === "string"
+    ? { ok: true, value: { timeZone: obj.timeZone } }
+    : { ok: false, error: "invalid_arguments" };
+};
+
+const validUnitArgs = (args: unknown): ToolValidationResult => {
+  const obj = objectArgs(args);
+  if (!obj || typeof obj.value !== "number" || !Number.isFinite(obj.value) ||
+      typeof obj.from !== "string" || typeof obj.to !== "string") {
+    return { ok: false, error: "invalid_arguments" };
+  }
+  return { ok: true, value: { value: obj.value, from: obj.from, to: obj.to } };
+};
 
 const calculator: ToolDefinition<{ expression: string }, { value: number }> = {
   name: "calculator",
@@ -6,6 +32,7 @@ const calculator: ToolDefinition<{ expression: string }, { value: number }> = {
   risk: "read",
   status: "available",
   inputSchema: { type: "object", required: ["expression"], properties: { expression: { type: "string", maxLength: 200 } } },
+  validateArgs: validCalculatorArgs,
   execute: ({ expression }) => {
     if (!/^[0-9+\-*/%.()\s]+$/.test(expression)) throw new Error("unsupported_expression");
     const tokens = expression.match(/\d+(?:\.\d+)?|[()+\-*/%]/g);
@@ -21,17 +48,28 @@ const calculator: ToolDefinition<{ expression: string }, { value: number }> = {
       if (op === "/" && b === 0) throw new Error("division_by_zero");
       values.push(op === "+" ? a + b : op === "-" ? a - b : op === "*" ? a * b : op === "/" ? a / b : a % b);
     };
+    let expectValue = true;
     for (const token of tokens) {
-      if (/^\d/.test(token)) values.push(Number(token));
-      else if (token === "(") ops.push(token);
-      else if (token === ")") {
+      if (/^\d/.test(token)) {
+        if (!expectValue) throw new Error("invalid_expression");
+        values.push(Number(token));
+        expectValue = false;
+      } else if (token === "(") {
+        if (!expectValue) throw new Error("invalid_expression");
+        ops.push(token);
+      } else if (token === ")") {
+        if (expectValue) throw new Error("invalid_expression");
         while (ops.length && ops[ops.length - 1] !== "(") apply();
         if (ops.pop() !== "(") throw new Error("invalid_expression");
+        expectValue = false;
       } else {
+        if (expectValue) throw new Error("invalid_expression");
         while (ops.length && ops[ops.length - 1] !== "(" && precedence[ops[ops.length - 1]] >= precedence[token]) apply();
         ops.push(token);
+        expectValue = true;
       }
     }
+    if (expectValue) throw new Error("invalid_expression");
     while (ops.length) { if (ops[ops.length - 1] === "(") throw new Error("invalid_expression"); apply(); }
     if (values.length !== 1 || !Number.isFinite(values[0])) throw new Error("invalid_expression");
     return { value: values[0] };
@@ -44,9 +82,15 @@ const currentTime: ToolDefinition<{ timeZone?: string }, { iso: string, timeZone
   risk: "read",
   status: "available",
   inputSchema: { type: "object", properties: { timeZone: { type: "string" } } },
+  validateArgs: validTimeArgs,
   execute: ({ timeZone = "UTC" }) => {
     const now = new Date();
-    const iso = new Intl.DateTimeFormat("en-CA", { timeZone, dateStyle: "full", timeStyle: "long" }).format(now);
+    let iso: string;
+    try {
+      iso = new Intl.DateTimeFormat("en-CA", { timeZone, dateStyle: "full", timeStyle: "long" }).format(now);
+    } catch {
+      throw new Error("invalid_timezone");
+    }
     return { iso, timeZone };
   }
 };
@@ -57,17 +101,20 @@ const unitConvert: ToolDefinition<{ value: number, from: string, to: string }, {
   risk: "read",
   status: "available",
   inputSchema: { type: "object", required: ["value","from","to"], properties: { value:{type:"number"}, from:{type:"string"}, to:{type:"string"} } },
+  validateArgs: validUnitArgs,
   execute: ({ value, from, to }) => {
     const f=from.toLowerCase(), t=to.toLowerCase();
-    const length: Record<string,number>={m:1,km:1000,cm:.01,mm:.001,mi:1609.344,ft:.3048,in:.0254};
+    const length: Record<string,number>={m:1,km:1000,cm:.01,mm:.001,mi:1609.344,ft:.3048,in:.0254,yd:.9144};
     const mass: Record<string,number>={kg:1,g:.001,mg:.000001,lb:.45359237,oz:.028349523125};
-    if (f==="c" || f==="°c" || f==="f" || f==="°f") {
+    const data: Record<string,number>={b:1,kb:1024,mb:1024**2,gb:1024**3,tb:1024**4};
+    if (["c","°c","f","°f"].includes(f)) {
       if (!["c","°c","f","°f"].includes(t)) throw new Error("incompatible_units");
       const c=f.includes("f")?(value-32)*5/9:value;
       return {value:t.includes("f")?c*9/5+32:c};
     }
-    const table=length[f]!==undefined&&length[t]!==undefined?length:mass;
-    if (table[f]===undefined || table[t]===undefined) throw new Error("unsupported_units");
+    const tables = [length, mass, data];
+    const table = tables.find(candidate => candidate[f] !== undefined && candidate[t] !== undefined);
+    if (!table) throw new Error("unsupported_units");
     return {value:value*table[f]/table[t]};
   }
 };
