@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { z } from "zod";
 import { routeChat } from "../src/core/chat.js";
+import { authConfigured, verifyBearerToken } from "../src/core/auth/verify.js";
+import { buildMemoryContext } from "../src/core/memory/context.js";
 
 const RequestSchema = z.object({
   message: z.string().min(1).max(12000),
@@ -21,20 +23,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const parsed = RequestSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({
-      error: "invalid_request",
-      details: parsed.error.flatten()
-    });
+    return res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
+  }
+
+  let userId: string | undefined;
+  if (authConfigured()) {
+    try {
+      userId = (await verifyBearerToken(req.headers.authorization)).id;
+    } catch {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  } else if (req.headers.authorization) {
+    try {
+      userId = (await verifyBearerToken(req.headers.authorization)).id;
+    } catch {
+      return res.status(401).json({ error: "unauthorized" });
+    }
   }
 
   try {
-    const result = await routeChat(parsed.data);
+    const memoryContext = userId ? buildMemoryContext(userId) : "";
+    const result = await routeChat({
+      ...parsed.data,
+      userContext: [parsed.data.userContext, memoryContext ? `Verified MyJarvis memory:\n${memoryContext}` : ""]
+        .filter(Boolean)
+        .join("\n\n"),
+      userId
+    });
     return res.status(result.ok ? 200 : 503).json(result);
   } catch (error) {
     console.error("MyJarvis chat error", error);
-    return res.status(500).json({
-      error: "internal_error",
-      message: "MyJarvis could not complete the request."
-    });
+    return res.status(500).json({ error: "internal_error", message: "MyJarvis could not complete the request." });
   }
 }
