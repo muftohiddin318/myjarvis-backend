@@ -5,7 +5,7 @@ import { routeChat } from "../src/core/chat.js";
 const RequestSchema = z.object({
   message: z.string().min(1).max(12000),
   conversationId: z.string().optional(),
-  language: z.string().default("en").max(20),
+  language: z.string().max(20).default("en"),
   history: z.array(z.object({
     role: z.enum(["user", "assistant", "system"]),
     content: z.string().min(1).max(12000)
