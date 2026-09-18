@@ -5,11 +5,17 @@ import { routeChat } from "../src/core/chat.js";
 const RequestSchema = z.object({
   message: z.string().min(1).max(12000),
   conversationId: z.string().optional(),
-  language: z.string().default("en")
+  language: z.string().default("en").max(20),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant", "system"]),
+    content: z.string().min(1).max(12000)
+  })).max(30).optional(),
+  userContext: z.string().max(12000).optional()
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "method_not_allowed" });
   }
 
@@ -23,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await routeChat(parsed.data);
-    return res.status(200).json(result);
+    return res.status(result.ok ? 200 : 503).json(result);
   } catch (error) {
     console.error("MyJarvis chat error", error);
     return res.status(500).json({
