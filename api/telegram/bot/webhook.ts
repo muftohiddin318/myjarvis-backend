@@ -40,15 +40,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (update.callback_query?.id && update.callback_query.data) {
       const callback = update.callback_query;
+      const callbackId = callback.id;
+      const callbackData = callback.data;
       const chatId = callback.message?.chat?.id;
+      if (!callbackId || !callbackData) {
+        return res.status(200).json({ ok: true });
+      }
       if (chatId === undefined || !isOwnerChat(callback.from?.id)) {
-        await answerCallbackQuery(callback.id, "Unauthorized");
+        await answerCallbackQuery(callbackId, "Unauthorized");
         return res.status(200).json({ ok: true });
       }
 
-      const [action, token] = callback.data.split(":", 2);
+      const [action, token] = callbackData.split(":", 2);
       if (action === "reject" && token) {
-        await answerCallbackQuery(callback.id, "Rejected");
+        await answerCallbackQuery(callbackId, "Rejected");
         await sendBotMessage(chatId, "❌ Approval rejected. Nothing was executed.");
         return res.status(200).json({ ok: true });
       }
@@ -57,16 +62,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await executeTool(approval.tool, approval.args, "medium");
 
         if (result.ok) {
-          await answerCallbackQuery(callback.id, "Approved and executed");
+          await answerCallbackQuery(callbackId, "Approved and executed");
           await sendBotMessage(chatId, `✅ Done. The ${approval.tool.replaceAll("_", " ")} action completed successfully.`);
         } else {
-          await answerCallbackQuery(callback.id, "Execution failed");
+          await answerCallbackQuery(callbackId, "Execution failed");
           await sendBotMessage(chatId, `❌ The approved action failed: ${result.error || "unknown_error"}`);
         }
         return res.status(200).json({ ok: true });
       }
 
-      await answerCallbackQuery(callback.id, "Unknown action");
+      await answerCallbackQuery(callbackId, "Unknown action");
       return res.status(200).json({ ok: true });
     }
 
