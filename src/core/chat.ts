@@ -1,4 +1,5 @@
 import { executeTool } from "./tools/executor.js";
+import { createApprovalToken } from "./actions/approvalToken.js";
 import { getModelToolSchemas } from "./tools/toolCalling.js";
 
 type ChatMessage = {
@@ -19,6 +20,12 @@ type NormalizedToolCall = {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+};
+
+type PendingApproval = {
+  tool: string;
+  args: Record<string, unknown>;
+  approvalToken: string;
 };
 
 type AgentTurn = {
@@ -209,10 +216,11 @@ async function callGeminiTurn(
   };
 }
 
-async function runAgent(input: ChatInput, provider: string, model: string): Promise<{ result: AgentTurn; steps: number }> {
+async function runAgent(input: ChatInput, provider: string, model: string): Promise<{ result: AgentTurn; steps: number; pendingApprovals: PendingApproval[] }> {
   const baseMessages = buildMessages(input);
   let steps = 0;
   let totalToolCalls = 0;
+  const pendingApprovals: PendingApproval[] = [];
 
   if (provider === "gemini") {
     let contents: any[] | undefined;
@@ -224,12 +232,33 @@ async function runAgent(input: ChatInput, provider: string, model: string): Prom
         totalToolCalls++;
         if (totalToolCalls > 10) throw new Error("tool_call_limit");
         const executed = await executeTool(call.name, call.arguments, "read");
+        if (!executed.ok && executed.requiresApproval) {
+          pendingApprovals.push({
+            tool: call.name,
+            args: call.arguments,
+            approvalToken: createApprovalToken({
+              tool: call.name,
+              toolArgs: call.arguments,
+              userId: input.userId,
+              ttlSeconds: 300
+            })
+          });
+        }
         functionResponses.push({
           functionResponse: {
             name: call.name,
-            response: executed.ok ? { ok: true, result: executed.result } : { ok: false, error: executed.error }
+            response: executed.ok
+              ? { ok: true, result: executed.result }
+              : { ok: false, error: executed.error, requiresApproval: executed.requiresApproval }
           }
         });
+      }
+      if (pendingApprovals.length) {
+        turn = {
+          ...turn,
+          message: "This action requires your approval before I can execute it."
+        };
+        return { result: turn, steps, pendingApprovals };
       }
       const previous = turn.providerState as any;
       contents = [
@@ -243,7 +272,7 @@ async function runAgent(input: ChatInput, provider: string, model: string): Prom
       turn = await callGeminiTurn(model, baseMessages, contents);
     }
     if (turn.toolCalls.length) throw new Error("agent_step_limit");
-    return { result: turn, steps };
+    return { result: turn, steps, pendingApprovals };
   }
 
   const messages: Array<Record<string, unknown>> = [
@@ -278,14 +307,34 @@ async function runAgent(input: ChatInput, provider: string, model: string): Prom
       totalToolCalls++;
       if (totalToolCalls > 10) throw new Error("tool_call_limit");
       const executed = await executeTool(call.name, call.arguments, "read");
+      if (!executed.ok && executed.requiresApproval) {
+        pendingApprovals.push({
+          tool: call.name,
+          args: call.arguments,
+          approvalToken: createApprovalToken({
+            tool: call.name,
+            toolArgs: call.arguments,
+            userId: input.userId,
+            ttlSeconds: 300
+          })
+        });
+      }
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         name: call.name,
         content: JSON.stringify(executed.ok
           ? { ok: true, result: executed.result }
-          : { ok: false, error: executed.error })
+          : { ok: false, error: executed.error, requiresApproval: executed.requiresApproval })
       });
+    }
+
+    if (pendingApprovals.length) {
+      turn = {
+        ...turn,
+        message: "This action requires your approval before I can execute it."
+      };
+      return { result: turn, steps, pendingApprovals };
     }
 
     turn = await callOpenAICompatibleTurn(
@@ -302,7 +351,7 @@ async function runAgent(input: ChatInput, provider: string, model: string): Prom
   }
 
   if (turn.toolCalls.length) throw new Error("agent_step_limit");
-  return { result: turn, steps };
+  return { result: turn, steps, pendingApprovals };
 }
 
 export async function routeChat(input: ChatInput) {
@@ -331,7 +380,7 @@ export async function routeChat(input: ChatInput) {
         : process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
 
     try {
-      const { result, steps } = await runAgent(input, provider, model);
+      const { result, steps, pendingApprovals } = await runAgent(input, provider, model);
       return {
         ok: true,
         provider,
@@ -341,7 +390,8 @@ export async function routeChat(input: ChatInput) {
         meta: {
           providersAttempted: failures.length + 1,
           fallbackUsed: failures.length > 0,
-          agentSteps: steps
+          agentSteps: steps,
+          pendingApprovals
         }
       };
     } catch (error) {
