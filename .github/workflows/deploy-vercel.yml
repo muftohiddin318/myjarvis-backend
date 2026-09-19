@@ -1,0 +1,35 @@
+name: Deploy MyJarvis backend to Vercel
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_A5tDB0zTXEGD8PnBDaLeaHYG
+      VERCEL_PROJECT_ID: prj_m4mgXO2oI8fyd4cIPByRDZdJZJC1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN GitHub secret is not configured."
+            exit 1
+          fi
+          npx vercel deploy --prod --yes --token="$VERCEL_TOKEN" --scope=muftohiddin318-1535s-projects
