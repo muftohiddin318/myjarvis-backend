@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 type ApprovalPayload = {
   v: 1;
@@ -47,11 +47,7 @@ export function createApprovalToken(args: {
 }
 
 function cryptoRandom() {
-  return Buffer.from(
-    createHmac("sha256", secret())
-      .update(`${Date.now()}:${Math.random()}`)
-      .digest()
-  ).toString("base64url");
+  return randomBytes(24).toString("base64url");
 }
 
 export function verifyApprovalToken(token: string) {
