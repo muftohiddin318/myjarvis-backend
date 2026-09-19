@@ -1,6 +1,11 @@
 import type { ToolDefinition, ToolValidationResult } from "./types.js";
 import { searchWeb } from "../web/search.js";
 
+type WebSearchArgs = {
+  query: string;
+  maxResults: number;
+};
+
 const validateSearchArgs = (args: unknown): ToolValidationResult => {
   if (!args || typeof args !== "object" || Array.isArray(args)) return { ok: false, error: "invalid_arguments" };
   const obj = args as Record<string, unknown>;
@@ -11,10 +16,10 @@ const validateSearchArgs = (args: unknown): ToolValidationResult => {
   if (typeof maxResults !== "number" || !Number.isInteger(maxResults) || maxResults < 1 || maxResults > 10) {
     return { ok: false, error: "invalid_arguments" };
   }
-  return { ok: true, value: { query: obj.query.trim(), maxResults } };
+  return { ok: true, value: { query: obj.query.trim(), maxResults } satisfies WebSearchArgs };
 };
 
-export const webTools: ToolDefinition[] = [{
+export const webTools: ToolDefinition<WebSearchArgs>[] = [{
   name: "search_web",
   description: "Search the live web for current information. Only available when a web search provider is configured.",
   risk: "read",
