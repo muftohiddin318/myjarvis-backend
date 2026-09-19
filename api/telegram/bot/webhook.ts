@@ -47,6 +47,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const [action, token] = callback.data.split(":", 2);
+      if (action === "reject" && token) {
+        await answerCallbackQuery(callback.id, "Rejected");
+        await sendBotMessage(chatId, "❌ Approval rejected. Nothing was executed.");
+        return res.status(200).json({ ok: true });
+      }
       if (action === "approve" && token) {
         const approval = verifyApprovalToken(token);
         const result = await executeTool(approval.tool, approval.args, "medium");
@@ -91,7 +96,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!result.ok) {
       await sendBotMessage(chatId, `❌ ${result.message}`);
     } else {
-      await sendBotMessage(chatId, result.message);
+      const approvals = (result.meta as { pendingApprovals?: Array<{ tool: string; args: Record<string, unknown>; approvalToken: string }> } | undefined)?.pendingApprovals ?? [];
+      if (approvals.length) {
+        for (const approval of approvals.slice(0, 3)) {
+          const summary = approval.tool === "send_telegram_message"
+            ? `Send to ${String(approval.args.username)}: ${String(approval.args.message)}`
+            : approval.tool === "bot_send_message"
+              ? `Send as @My_Jarvis_AI_1bot: ${String(approval.args.message)}`
+              : `Approve action: ${approval.tool}`;
+          await sendBotMessage(
+            chatId,
+            `⚠️ Approval required\\n\\n${summary}`,
+            {
+              inline_keyboard: [[
+                { text: "✅ Approve", callback_data: `approve:${approval.approvalToken}` },
+                { text: "❌ Reject", callback_data: `reject:${approval.approvalToken}` }
+              ]]
+            }
+          );
+        }
+      } else {
+        await sendBotMessage(chatId, result.message);
+      }
     }
 
     return res.status(200).json({ ok: true });
