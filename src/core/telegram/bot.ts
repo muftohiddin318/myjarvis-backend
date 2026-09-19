@@ -93,3 +93,7 @@ export async function createTelegramBotWebhook(url: string, secretToken: string)
 export async function getTelegramBotInfo() {
   return telegramApi("getMe", {});
 }
+
+export async function getTelegramBotWebhookInfo() {
+  return telegramApi("getWebhookInfo", {});
+}
