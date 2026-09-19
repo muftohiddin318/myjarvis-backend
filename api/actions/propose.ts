@@ -4,13 +4,22 @@ import { authConfigured, verifyBearerToken } from "../../src/core/auth/verify.js
 import { createApprovalToken } from "../../src/core/actions/approvalToken.js";
 import { getTool } from "../../src/core/tools/registry.js";
 
-const Schema = z.object({
-  tool: z.literal("send_telegram_message"),
-  args: z.object({
-    username: z.string().min(3).max(64),
-    message: z.string().min(1).max(4096)
+const Schema = z.discriminatedUnion("tool", [
+  z.object({
+    tool: z.literal("send_telegram_message"),
+    args: z.object({
+      username: z.string().min(3).max(64),
+      message: z.string().min(1).max(4096)
+    })
+  }),
+  z.object({
+    tool: z.literal("bot_send_message"),
+    args: z.object({
+      chatId: z.union([z.string(), z.number()]).optional(),
+      message: z.string().min(1).max(4096)
+    })
   })
-});
+]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -23,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const tool = getTool(parsed.data.tool);
   if (!tool || tool.status !== "available") {
-    return res.status(503).json({ error: "telegram_not_configured" });
+    return res.status(503).json({ error: "tool_not_configured", tool: parsed.data.tool });
   }
 
   let userId: string | undefined;
