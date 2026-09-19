@@ -11,7 +11,8 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
       toolCalling: true,
       safeBuiltinTools: true,
       webSearch: Boolean(process.env.TAVILY_API_KEY),
-      authenticatedPersonalData: authConfigured()
+      authenticatedPersonalData: authConfigured(),
+      telegramSend: Boolean(process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_STRING_SESSION && process.env.TELEGRAM_ACTION_SECRET)
     },
     timestamp: new Date().toISOString()
   });
