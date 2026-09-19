@@ -1,0 +1,31 @@
+name: Register MyJarvis Telegram bot webhook
+
+on:
+  workflow_dispatch:
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Register webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_BOT_WEBHOOK_SECRET }}
+          BACKEND_URL: https://myjarvis-backend.vercel.app
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_BOT_WEBHOOK_SECRET" ]; then
+            echo "Configure TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_WEBHOOK_SECRET GitHub secrets first."
+            exit 1
+          fi
+
+          python - <<'PY' > payload.json
+import json, os
+print(json.dumps({
+  "url": os.environ["BACKEND_URL"] + "/api/telegram/bot/webhook",
+  "secret_token": os.environ["TELEGRAM_BOT_WEBHOOK_SECRET"],
+  "allowed_updates": ["message", "callback_query"],
+  "drop_pending_updates": False
+}))
+PY
+
+          curl -fsS -X POST             "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook"             -H "Content-Type: application/json"             --data-binary @payload.json
