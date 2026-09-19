@@ -1,5 +1,17 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getTelegramBotInfo, ownerConfigured } from "../../../src/core/telegram/bot.js";
+import {
+  getTelegramBotInfo,
+  getTelegramBotWebhookInfo,
+  ownerConfigured
+} from "../../../src/core/telegram/bot.js";
+
+const PUBLIC_BACKEND_URL =
+  process.env.MYJARVIS_PUBLIC_BACKEND_URL ||
+  "https://myjarvis-backend.vercel.app";
+
+function expectedWebhookUrl() {
+  return PUBLIC_BACKEND_URL.replace(/\/$/, "") + "/api/telegram/bot/webhook";
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
@@ -17,16 +29,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       configured: false,
-      ownerConfigured: ownerConfigured()
+      connected: false,
+      ownerConfigured: ownerConfigured(),
+      webhookConfigured: false
     });
   }
 
   try {
-    const bot = await getTelegramBotInfo();
+    const [bot, webhook] = await Promise.all([
+      getTelegramBotInfo(),
+      getTelegramBotWebhookInfo()
+    ]);
+
+    const webhookUrl = typeof webhook === "object" && webhook !== null && "url" in webhook
+      ? String((webhook as { url?: unknown }).url || "")
+      : "";
+    const webhookConfigured = webhookUrl === expectedWebhookUrl();
+
     return res.status(200).json({
       ok: true,
       configured: true,
       connected: true,
+      ownerConfigured: ownerConfigured(),
+      webhookConfigured,
+      webhookUrl: webhookUrl || null,
+      expectedWebhookUrl: expectedWebhookUrl(),
       bot
     });
   } catch (error) {
@@ -34,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ok: false,
       configured: true,
       connected: false,
+      webhookConfigured: false,
       error: error instanceof Error ? error.message : String(error)
     });
   }
