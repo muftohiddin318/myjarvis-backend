@@ -1,5 +1,6 @@
-import { TelegramClient } from "teleproto";
-import { StringSession } from "teleproto/sessions";
+import { TelegramClient, sessions } from "teleproto";
+
+const { StringSession } = sessions;
 
 let cachedClient: TelegramClient | null = null;
 
