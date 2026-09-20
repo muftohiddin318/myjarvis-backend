@@ -1,5 +1,3 @@
-import { routeChat } from "../chat.js";
-
 type TelegramSendResult = {
   ok: boolean;
   result?: unknown;
@@ -69,6 +67,10 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
 
 export async function processBotText(chatId: number | string, text: string) {
   await sendBotTyping(chatId);
+
+  // Lazy-load the chat router to avoid a module initialization cycle:
+  // chat -> tool registry -> bot telegram tool -> telegram bot.
+  const { routeChat } = await import("../chat.js");
 
   const result = await routeChat({
     message: text,
