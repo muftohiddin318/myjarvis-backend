@@ -36,14 +36,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const [bot, webhook] = await Promise.all([
+    const [bot, initialWebhook] = await Promise.all([
       getTelegramBotInfo(),
       getTelegramBotWebhookInfo()
     ]);
 
-    const webhookUrl = typeof webhook === "object" && webhook !== null && "url" in webhook
-      ? String((webhook as { url?: unknown }).url || "")
+    let webhookUrl = typeof initialWebhook === "object" && initialWebhook !== null && "url" in initialWebhook
+      ? String((initialWebhook as { url?: unknown }).url || "")
       : "";
+
+    // If Telegram has no webhook at all, configure the expected JARVIS webhook
+    // automatically. We never overwrite a different non-empty webhook here.
+    if (!webhookUrl) {
+      const secret = process.env.TELEGRAM_BOT_WEBHOOK_SECRET;
+      if (!secret) throw new Error("telegram_bot_webhook_secret_not_configured");
+      await import("../../../src/core/telegram/bot.js").then(({ createTelegramBotWebhook }) =>
+        createTelegramBotWebhook(expectedWebhookUrl(), secret)
+      );
+      const refreshedWebhook = await getTelegramBotWebhookInfo();
+      webhookUrl = typeof refreshedWebhook === "object" && refreshedWebhook !== null && "url" in refreshedWebhook
+        ? String((refreshedWebhook as { url?: unknown }).url || "")
+        : "";
+    }
+
     const webhookConfigured = webhookUrl === expectedWebhookUrl();
 
     return res.status(200).json({
