@@ -33,3 +33,22 @@ jobs:
             exit 1
           fi
           npx vercel deploy --prod --yes --token="$VERCEL_TOKEN" --scope=muftohiddin318-1535s-projects
+
+      - name: Verify Telegram production variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx vercel env ls production --token="$VERCEL_TOKEN" --scope=muftohiddin318-1535s-projects --project="$VERCEL_PROJECT_ID" > env-list.txt
+
+          for name in \
+            TELEGRAM_BOT_TOKEN \
+            TELEGRAM_BOT_WEBHOOK_SECRET \
+            MYJARVIS_OWNER_TELEGRAM_ID \
+            TELEGRAM_ACTION_SECRET
+          do
+            if grep -q "$name" env-list.txt; then
+              echo "$name: PRESENT"
+            else
+              echo "$name: MISSING"
+            fi
+          done
