@@ -1,9 +1,18 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { executeTool } from "../src/core/tools/executor.js";
 import { listTools } from "../src/core/tools/registry.js";
+import { getModelToolSchemas } from "../src/core/tools/toolCalling.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
+    if (req.query.mode === "schema") {
+      return res.status(200).json({
+        ok: true,
+        toolChoice: "auto",
+        tools: getModelToolSchemas()
+      });
+    }
+
     return res.status(200).json({ ok: true, tools: listTools() });
   }
 
