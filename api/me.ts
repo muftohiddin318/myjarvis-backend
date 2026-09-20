@@ -1,7 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyBearerToken } from "../src/core/auth/verify.js";
+import { authConfigured, verifyBearerToken } from "../src/core/auth/verify.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query.mode === "status") {
+    const configured = authConfigured();
+    return res.status(200).json({
+      ok: true,
+      configured,
+      mode: configured ? "jwt" : "not_configured"
+    });
+  }
+
   try {
     const user = await verifyBearerToken(req.headers.authorization);
     return res.status(200).json({
