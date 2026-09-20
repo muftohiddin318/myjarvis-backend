@@ -1,4 +1,14 @@
 {
+  "rewrites": [
+    {
+      "source": "/api/tools/schema",
+      "destination": "/api/tools?mode=schema"
+    },
+    {
+      "source": "/api/auth/status",
+      "destination": "/api/me?mode=status"
+    }
+  ],
   "functions": {
     "api/*.ts": {
       "maxDuration": 30
